@@ -1,4 +1,4 @@
-name: Docker Build Only
+name: Docker Build Split
 
 on:
   workflow_dispatch:
@@ -8,11 +8,14 @@ on:
     tags: [v*]
 
 jobs:
-  build_docker:
+  build_docker_split:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64] # 你想要构建的架构列表
     steps:
-
-    - name: Check out code into the Go module directory
+    
+    - name: Check out code
       uses: actions/checkout@v4
 
     - name: Set env
@@ -20,6 +23,9 @@ jobs:
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
+      # 仅在非 amd64 架构时运行，因为 amd64 是原生支持的
+      with:
+        platforms: all
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -34,36 +40,38 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildx-
 
-    - name: Build nps (no push)
+    - name: Build nps (no push) - ${{ matrix.arch }}
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile.nps
-        platforms: linux/amd64,linux/arm,linux/arm64
+        # 指定当前任务的架构
+        platforms: linux/${{ matrix.arch }} 
         push: false
-        tags: nps:latest, nps:${{ env.RELEASE_VERSION }}
+        tags: nps-${{ matrix.arch }}:latest, nps-${{ matrix.arch }}:${{ env.RELEASE_VERSION }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
-        outputs: type=oci,dest=/tmp/nps-image.tar
+        outputs: type=oci,dest=/tmp/nps-image-${{ matrix.arch }}.tar
 
-    - name: Verify nps image
+    - name: Verify nps image - ${{ matrix.arch }}
       run: |
-        docker load -i /tmp/nps-image.tar
-        docker images | grep nps
+        docker load -i /tmp/nps-image-${{ matrix.arch }}.tar
+        docker images | grep nps-${{ matrix.arch }}
 
-    - name: Build npc (no push)
+    - name: Build npc (no push) - ${{ matrix.arch }}
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile.npc
-        platforms: linux/amd64,linux/arm,linux/arm64
+        # 指定当前任务的架构
+        platforms: linux/${{ matrix.arch }}
         push: false
-        tags: npc:latest, npc:${{ env.RELEASE_VERSION }}
+        tags: npc-${{ matrix.arch }}:latest, npc-${{ matrix.arch }}:${{ env.RELEASE_VERSION }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
-        outputs: type=oci,dest=/tmp/npc-image.tar
+        outputs: type=oci,dest=/tmp/npc-image-${{ matrix.arch }}.tar
 
-    - name: Verify npc image
+    - name: Verify npc image - ${{ matrix.arch }}
       run: |
-        docker load -i /tmp/npc-image.tar
-        docker images | grep npc
+        docker load -i /tmp/npc-image-${{ matrix.arch }}.tar
+        docker images | grep npc-${{ matrix.arch }}
